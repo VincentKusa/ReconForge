@@ -249,6 +249,95 @@ def _intel_section(intel: dict[str, Any], lines: list[str]) -> None:
     )
 
 
+def _fingerprint_section(data: dict[str, Any], lines: list[str]) -> None:
+    """Render the per-asset fingerprint + CVE candidate summary."""
+    fingerprints = data.get("fingerprints", [])
+    if not fingerprints:
+        return
+
+    lines.extend(
+        [
+            "",
+            "## 7a. Fingerprint and CVE Candidates",
+            "",
+            (
+                "Fingerprinted services carried forward from Discovery, "
+                "plus unvalidated CVE candidates from the NVD lookup. "
+                "Candidates are LEADS for the reviewer, never confirmed "
+                "findings."
+            ),
+        ]
+    )
+
+    for report in fingerprints:
+        asset = report.get("asset", "-")
+        lines.extend(["", f"### {asset}", ""])
+
+        services = report.get("services", [])
+        if services:
+            lines.extend(
+                [
+                    "**Services**",
+                    "",
+                    "| Port | Proto | Service | Product | Version | Extra | Confidence |",
+                    "|---:|---|---|---|---|---|---|",
+                ]
+            )
+            for svc in services:
+                values = [
+                    str(svc.get("port", "-")),
+                    svc.get("protocol") or "-",
+                    svc.get("service") or "-",
+                    svc.get("product") or "-",
+                    svc.get("version") or "-",
+                    svc.get("extrainfo") or "-",
+                    svc.get("confidence") or "-",
+                ]
+                safe = [v.replace("|", "\\|").replace("\n", " ") for v in values]
+                lines.append("| " + " | ".join(safe) + " |")
+        else:
+            lines.append("- Services: none fingerprinted")
+
+        cves = report.get("cve_candidates", [])
+        if cves:
+            lines.extend(
+                [
+                    "",
+                    "**CVE candidates (unvalidated)**",
+                    "",
+                    "| CVE | Product | Version | CVSS | Severity | Status |",
+                    "|---|---|---|---:|---|---|",
+                ]
+            )
+            for cve in cves:
+                values = [
+                    cve.get("cve_id") or "-",
+                    cve.get("product") or "-",
+                    cve.get("version") or "-",
+                    str(cve.get("cvss_score") if cve.get("cvss_score") is not None else "-"),
+                    cve.get("cvss_severity") or "-",
+                    cve.get("status") or "candidate — reviewer validation required",
+                ]
+                safe = [v.replace("|", "\\|").replace("\n", " ") for v in values]
+                lines.append("| " + " | ".join(safe) + " |")
+            lines.extend(
+                [
+                    "",
+                    "> These are leads only. A banner match does not confirm "
+                    "exploitability. The reviewer must validate each candidate "
+                    "against vendor advisories and the actual installed build.",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    "",
+                    "- CVE candidates: none returned by the NVD lookup "
+                    "(or the lookup was not requested).",
+                ]
+            )
+
+
 def _coverage_section(coverage: dict[str, Any], lines: list[str]) -> None:
     """Render the per-source evidence coverage matrix."""
     lines.extend(
@@ -370,6 +459,7 @@ def generate_markdown(data: dict[str, Any], output_path: str | Path) -> str:
     _http_tls_section(http_tls, lines)
     _nmap_section(nmap, lines)
     _intel_section(intel, lines)
+    _fingerprint_section(data, lines)
     _coverage_section(coverage, lines)
     _gaps_section(gaps, lines)
 
@@ -389,6 +479,8 @@ def generate_markdown(data: dict[str, Any], output_path: str | Path) -> str:
             "5. Validate Intel leads before promoting them to technical findings.",
             "6. Assign vulnerability severity only after sufficient evidence "
             "supports impact and exploitability.",
+            "7. Validate each CVE candidate against vendor advisories and the "
+            "actual installed build before promoting it to a finding.",
             "",
             "## 11. Methodology and Limitations",
             "",
@@ -396,6 +488,8 @@ def generate_markdown(data: dict[str, Any], output_path: str | Path) -> str:
             "- No additional network requests, scans, or exploitation checks are run.",
             "- Intel intelligence and Discovery technical findings remain distinct.",
             "- No CVE, CWE, CVSS score, or vulnerability severity is inferred.",
+            "- CVE candidates are informational leads from the NVD; they are "
+            "never auto-promoted to findings.",
             "- All conclusions are limited to the evidence available in the input files.",
             "",
         ]

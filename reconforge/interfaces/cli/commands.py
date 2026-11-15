@@ -232,10 +232,32 @@ class DiscoverCommand(Command):
                 "for this run. Requires --active; exclusions still apply."
             ),
         )
+        # --- fingerprint/WAF additions ---
+        parser.add_argument(
+            "--fingerprint-web",
+            action="store_true",
+            help=(
+                "Active web/technology fingerprinting (httpx if present, "
+                "otherwise a HEAD-request header fallback). "
+                "Requires --active and explicit asset approval."
+            ),
+        )
+        parser.add_argument(
+            "--waf",
+            action="store_true",
+            help=(
+                "Active WAF detection (wafw00f if present, otherwise a "
+                "header heuristic). Requires --active and explicit asset "
+                "approval. Active fingerprinting may be logged or blocked."
+            ),
+        )
 
     def run(self, args: argparse.Namespace, container: Container) -> int:
         try:
-            container.discover_assets().execute(
+            container.discover_assets(
+                fingerprint_web=args.fingerprint_web,
+                waf=args.waf,
+            ).execute(
                 DiscoveryRequest(
                     engagement_id=args.engagement,
                     database=resolve_path(args.database),
@@ -251,7 +273,13 @@ class DiscoverCommand(Command):
         except DiscoveryGateError as exc:
             container.console.warning(str(exc))
             return 2
-        except (ReconForgeError, FileNotFoundError, PermissionError, ValueError, OSError) as exc:
+        except (
+            ReconForgeError,
+            FileNotFoundError,
+            PermissionError,
+            ValueError,
+            OSError,
+        ) as exc:
             container.console.warning(f"Discovery error: {exc}")
             return 2
 
@@ -267,10 +295,31 @@ class AnalyzeCommand(Command):
         parser.add_argument(
             "--output-root", default=str(PROJECT_ROOT / DEFAULT_OUTPUT_ROOT)
         )
+        # --- CVE candidate additions ---
+        parser.add_argument(
+            "--cve-lookup",
+            action="store_true",
+            help=(
+                "Query the NVD for CVE candidates from the fingerprinted "
+                "services. Read-only external lookups; results are leads "
+                "for the reviewer, never confirmed findings."
+            ),
+        )
+        parser.add_argument(
+            "--nvd-api-key",
+            default=None,
+            help=(
+                "Optional NVD API key (raises the rate limit from 5/30s "
+                "to 50/30s)."
+            ),
+        )
 
     def run(self, args: argparse.Namespace, container: Container) -> int:
         try:
-            container.analyze_evidence().execute(
+            container.analyze_evidence(
+                cve_lookup=args.cve_lookup,
+                nvd_api_key=args.nvd_api_key,
+            ).execute(
                 AnalysisRequest(
                     engagement_id=args.engagement,
                     output_root=resolve_path(args.output_root),
@@ -377,6 +426,27 @@ class RunCommand(Command):
                 "during discovery. Requires --active; exclusions still apply."
             ),
         )
+        # --- fingerprint/WAF/CVE additions for the pipeline ---
+        parser.add_argument(
+            "--fingerprint-web",
+            action="store_true",
+            help="Include web/technology fingerprinting in discovery",
+        )
+        parser.add_argument(
+            "--waf",
+            action="store_true",
+            help="Include WAF detection in discovery",
+        )
+        parser.add_argument(
+            "--cve-lookup",
+            action="store_true",
+            help="Include NVD CVE candidate lookup in analysis",
+        )
+        parser.add_argument(
+            "--nvd-api-key",
+            default=None,
+            help="Optional NVD API key for the CVE lookup step",
+        )
         parser.add_argument(
             "--reviewer",
             default=None,
@@ -406,7 +476,12 @@ class RunCommand(Command):
         config_path = self._resolve_config(args, container)
 
         try:
-            result = container.run_pipeline().execute(
+            result = container.run_pipeline(
+                fingerprint_web=args.fingerprint_web,
+                waf=args.waf,
+                cve_lookup=args.cve_lookup,
+                nvd_api_key=args.nvd_api_key,
+            ).execute(
                 PipelineRunRequest(
                     database=resolve_path(args.database),
                     config_path=config_path,

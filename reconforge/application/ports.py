@@ -12,6 +12,13 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from reconforge.domain.fingerprint import (
+    CveCandidate,
+    OsGuess,
+    ServiceFingerprint,
+    WafSignal,
+    WebServerInfo,
+)
 from reconforge.domain.scope import Validation
 
 
@@ -131,3 +138,36 @@ class ValidationPresenter(Protocol):
 
     def present(self, validation: Validation) -> dict[str, Any]:
         return asdict(validation)  # pragma: no cover - default convention
+
+
+# --- Ports for the fingerprint/WAF/CVE upgrade ---------------------------
+
+
+@runtime_checkable
+class WebFingerprintPort(Protocol):
+    """Active web/technology fingerprinting for one approved URL."""
+
+    def fingerprint(self, url: str) -> WebServerInfo: ...
+
+
+@runtime_checkable
+class WafPort(Protocol):
+    """Active WAF detection for one approved URL."""
+
+    def detect(self, url: str) -> WafSignal: ...
+
+
+@runtime_checkable
+class CveLookupPort(Protocol):
+    """Read-only CVE candidate lookup for one fingerprinted service."""
+
+    def lookup(self, service: ServiceFingerprint) -> list[CveCandidate]: ...
+
+
+@runtime_checkable
+class NmapXmlPort(Protocol):
+    """Convert a retained Nmap XML file into domain fingerprint objects."""
+
+    def fingerprints(
+        self, xml_path: str | Path
+    ) -> tuple[list[ServiceFingerprint], list[OsGuess]]: ...

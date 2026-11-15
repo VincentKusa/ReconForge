@@ -14,7 +14,7 @@ __pycache__/
 
 # Local configuration (never commit credentials or engagement scope)
 config/settings.env
-config/stage4.json
+config/discovery.json
 config/scope.json
 
 # Engagement evidence and generated reports

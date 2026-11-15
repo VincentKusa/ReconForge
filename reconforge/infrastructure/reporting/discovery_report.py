@@ -253,6 +253,129 @@ def _host_details_section(data: dict[str, Any], lines: list[str]) -> None:
                 lines.append("")
 
 
+def _fingerprint_summary_section(data: dict[str, Any], lines: list[str]) -> None:
+    """Render the per-asset fingerprint summary: services, OS, web, WAF, CVEs."""
+    fingerprints = data.get("fingerprints", [])
+    if not fingerprints:
+        return
+
+    lines.extend(
+        [
+            "",
+            "## Fingerprint summary",
+            "",
+            (
+                "Each asset's fingerprinted services, operating-system "
+                "guesses, web server metadata, WAF signal and unvalidated "
+                "CVE candidates. CVE candidates are leads for the reviewer "
+                "and are never confirmed findings."
+            ),
+        ]
+    )
+
+    for report in fingerprints:
+        asset = report.get("asset", "-")
+        lines.extend(["", f"### {asset}", ""])
+
+        services = report.get("services", [])
+        if services:
+            lines.extend(
+                [
+                    "**Services**",
+                    "",
+                    "| Port | Proto | Service | Product | Version | Extra | Confidence |",
+                    "|---:|---|---|---|---|---|---|",
+                ]
+            )
+            for svc in services:
+                values = [
+                    str(svc.get("port", "-")),
+                    svc.get("protocol") or "-",
+                    svc.get("service") or "-",
+                    svc.get("product") or "-",
+                    svc.get("version") or "-",
+                    svc.get("extrainfo") or "-",
+                    svc.get("confidence") or "-",
+                ]
+                safe = [v.replace("|", "\\|").replace("\n", " ") for v in values]
+                lines.append("| " + " | ".join(safe) + " |")
+        else:
+            lines.append("- Services: none fingerprinted")
+
+        os_guesses = report.get("os_guesses", [])
+        if os_guesses:
+            lines.extend(["", "**Operating system**", ""])
+            for guess in os_guesses:
+                accuracy = guess.get("accuracy")
+                accuracy_text = f"{accuracy}%" if accuracy is not None else "-"
+                lines.append(
+                    f"- {guess.get('name')} "
+                    f"(family: {guess.get('family') or '-'}, "
+                    f"accuracy: {accuracy_text}, "
+                    f"source: {guess.get('source') or '-'})"
+                )
+        else:
+            lines.extend(["", "- OS: no reliable match returned"])
+
+        web = report.get("web", [])
+        if web:
+            lines.extend(["", "**Web server**", ""])
+            for entry in web:
+                technologies = ", ".join(entry.get("technologies") or []) or "-"
+                lines.append(f"- URL: {entry.get('url')}")
+                lines.append(f"  - Server: {entry.get('server_header') or '-'}")
+                lines.append(f"  - Powered-By: {entry.get('powered_by') or '-'}")
+                lines.append(f"  - Technologies: {technologies}")
+                if entry.get("title"):
+                    lines.append(f"  - Title: {entry.get('title')}")
+
+        waf = report.get("waf") or {}
+        if waf:
+            lines.extend(["", "**WAF**", ""])
+            if waf.get("detected"):
+                lines.append(
+                    f"- Detected: **{waf.get('vendor')}** "
+                    f"({waf.get('evidence') or '-'}, confidence: "
+                    f"{waf.get('confidence') or '-'})"
+                )
+            else:
+                lines.append(
+                    f"- Not detected ({waf.get('evidence') or '-'}, "
+                    f"confidence: {waf.get('confidence') or '-'})"
+                )
+
+        cves = report.get("cve_candidates", [])
+        if cves:
+            lines.extend(
+                [
+                    "",
+                    "**CVE candidates (unvalidated — reviewer must confirm)**",
+                    "",
+                    "| CVE | Product | Version | CVSS | Severity |",
+                    "|---|---|---|---:|---|",
+                ]
+            )
+            for cve in cves:
+                values = [
+                    cve.get("cve_id") or "-",
+                    cve.get("product") or "-",
+                    cve.get("version") or "-",
+                    str(cve.get("cvss_score") if cve.get("cvss_score") is not None else "-"),
+                    cve.get("cvss_severity") or "-",
+                ]
+                safe = [v.replace("|", "\\|").replace("\n", " ") for v in values]
+                lines.append("| " + " | ".join(safe) + " |")
+            lines.extend(
+                [
+                    "",
+                    "> These are leads only. A banner match does not confirm "
+                    "exploitability. The reviewer must validate each candidate "
+                    "against vendor advisories and the actual installed build "
+                    "before promoting it to a finding.",
+                ]
+            )
+
+
 def _findings_section(data: dict[str, Any], lines: list[str]) -> None:
     """Render provisional findings with evidence and verification steps."""
     assessment = data.get("assessment", {})
@@ -319,6 +442,7 @@ def generate_markdown(data: dict[str, Any], output_path: str | Path) -> str:
     _active_section(data, lines)
     _port_inventory_section(data, lines)
     _host_details_section(data, lines)
+    _fingerprint_summary_section(data, lines)
     _findings_section(data, lines)
 
     lines.extend(
@@ -345,6 +469,8 @@ def generate_markdown(data: dict[str, Any], output_path: str | Path) -> str:
             "- TCP connectivity does not identify a vulnerability.",
             "- Discovery alone does not authorize active testing.",
             "- An unexecuted Nmap scan provides no evidence about open ports.",
+            "- CVE candidates are unvalidated leads, not confirmed findings.",
+            "- WAF detection through active probing may be logged or blocked.",
             "",
         ]
     )

@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from reconforge.domain.fingerprint import HostFingerprintReport
+
 
 @dataclass(frozen=True)
 class ExposureRule:
@@ -396,3 +398,109 @@ def build_assessment(nmap_results: dict[str, Any]) -> dict[str, Any]:
         },
         "decision_tree": DECISION_TREE,
     }
+
+
+# --- Fingerprint summary (new) --------------------------------------------
+
+
+def score_fingerprint(report: HostFingerprintReport) -> list[str]:
+    """Pure helper: highlight the notable leads from one fingerprint report."""
+    notes: list[str] = []
+    if report.waf and report.waf.detected:
+        notes.append(
+            f"WAF detected ({report.waf.vendor}); active checks may be "
+            "logged/blocked"
+        )
+    for svc in report.services:
+        if svc.version and svc.product:
+            notes.append(
+                f"{svc.product} {svc.version} on {svc.port}/{svc.protocol} (lead only)"
+            )
+    if report.cve_candidates:
+        notes.append(
+            f"{len(report.cve_candidates)} CVE candidate(s) — requires reviewer "
+            "validation"
+        )
+    return notes
+
+
+def build_fingerprint_summary(
+    fingerprints: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Render-ready per-asset summary of services, OS, web, WAF.
+
+    Accepts the serialized form produced by DiscoverAssets._build_fingerprints
+    (asdict of HostFingerprintReport) so the domain layer stays free of
+    adapter imports.
+    """
+    summary: list[dict[str, Any]] = []
+
+    for report in fingerprints:
+        services = [
+            {
+                "port": s.get("port"),
+                "protocol": s.get("protocol"),
+                "service": s.get("service"),
+                "product": s.get("product"),
+                "version": s.get("version"),
+                "extrainfo": s.get("extrainfo"),
+                "confidence": s.get("confidence"),
+            }
+            for s in report.get("services", [])
+            if s.get("product") or s.get("version") or s.get("service")
+        ]
+
+        os_rows = [
+            {
+                "name": o.get("name"),
+                "family": o.get("family"),
+                "accuracy": o.get("accuracy"),
+                "source": o.get("source"),
+                "confidence": o.get("confidence"),
+            }
+            for o in report.get("os_guesses", [])
+        ]
+
+        web_rows = [
+            {
+                "url": w.get("url"),
+                "server": w.get("server_header"),
+                "powered_by": w.get("powered_by"),
+                "technologies": list(w.get("technologies") or ()),
+                "title": w.get("title"),
+            }
+            for w in report.get("web", [])
+        ]
+
+        waf = report.get("waf") or {}
+
+        cves = [
+            {
+                "cve_id": c.get("cve_id"),
+                "product": c.get("product"),
+                "version": c.get("version"),
+                "cvss_score": c.get("cvss_score"),
+                "cvss_severity": c.get("cvss_severity"),
+                "summary": c.get("summary"),
+                "status": "candidate — reviewer validation required",
+            }
+            for c in report.get("cve_candidates", [])
+        ]
+
+        summary.append(
+            {
+                "asset": report.get("asset"),
+                "services": services,
+                "os": os_rows,
+                "web": web_rows,
+                "waf": {
+                    "detected": waf.get("detected"),
+                    "vendor": waf.get("vendor"),
+                    "evidence": waf.get("evidence"),
+                    "confidence": waf.get("confidence"),
+                },
+                "cve_candidates": cves,
+            }
+        )
+
+    return summary

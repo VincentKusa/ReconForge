@@ -8,10 +8,12 @@ dependencies through the constructor.
 from __future__ import annotations
 
 from reconforge.application.ports import EngagementRepository, LeadRepository
+from reconforge.application.services.cve_lookup import lookup_cves
 from reconforge.application.services.discovery import (
     ActiveCheckRunner,
     DiscoveryService,
 )
+from reconforge.application.services.nmap_fingerprint import NmapXmlFingerprints
 from reconforge.application.settings import Settings
 from reconforge.application.use_cases.analyze_evidence import AnalyzeEvidence
 from reconforge.application.use_cases.assemble_assessment import AssembleAssessment
@@ -35,6 +37,8 @@ from reconforge.infrastructure.persistence.engagement_repository import (
     SqliteEngagementRepository,
 )
 from reconforge.infrastructure.persistence.evidence_store import EvidenceStore
+from reconforge.infrastructure.probes.waf_recon import detect_waf
+from reconforge.infrastructure.probes.web_fingerprint import fingerprint_web
 from reconforge.infrastructure.reporting.renderers import (
     AnalysisReportRenderer,
     AssessmentReportRenderer,
@@ -42,6 +46,33 @@ from reconforge.infrastructure.reporting.renderers import (
     IntelBriefRenderer,
 )
 from reconforge.interfaces.cli.console import Console
+
+
+# --- Adapters implementing the application ports -------------------------
+
+
+class _WebAdapter:
+    """Satisfies application.ports.WebFingerprintPort."""
+
+    def fingerprint(self, url):
+        return fingerprint_web(url)
+
+
+class _WafAdapter:
+    """Satisfies application.ports.WafPort."""
+
+    def detect(self, url):
+        return detect_waf(url)
+
+
+class _CveAdapter:
+    """Satisfies application.ports.CveLookupPort."""
+
+    def __init__(self, api_key: str | None = None):
+        self._key = api_key
+
+    def lookup(self, service):
+        return lookup_cves(service, api_key=self._key)
 
 
 def _engagements(settings: Settings) -> EngagementRepository:
@@ -93,7 +124,11 @@ class Container:
             self.console,
         )
 
-    def discover_assets(self) -> DiscoverAssets:
+    def discover_assets(
+        self,
+        fingerprint_web: bool = False,
+        waf: bool = False,
+    ) -> DiscoverAssets:
         return DiscoverAssets(
             self.workspace,
             self.artifacts,
@@ -103,13 +138,21 @@ class Container:
             DiscoveryReportRenderer(),
             DiscoveryReportRenderer(),
             self.console,
+            web_port=_WebAdapter() if fingerprint_web else None,
+            waf_port=_WafAdapter() if waf else None,
+            nmap_xml_port=NmapXmlFingerprints(),
         )
 
-    def analyze_evidence(self) -> AnalyzeEvidence:
+    def analyze_evidence(
+        self,
+        cve_lookup: bool = False,
+        nvd_api_key: str | None = None,
+    ) -> AnalyzeEvidence:
         return AnalyzeEvidence(
             self.artifacts,
             AnalysisReportRenderer(),
             self.console,
+            cve_lookup=_CveAdapter(nvd_api_key) if cve_lookup else None,
         )
 
     def assemble_assessment(self) -> AssembleAssessment:
@@ -121,15 +164,25 @@ class Container:
             self.console,
         )
 
-    def run_pipeline(self) -> RunEngagementPipeline:
+    def run_pipeline(
+        self,
+        fingerprint_web: bool = False,
+        waf: bool = False,
+        cve_lookup: bool = False,
+        nvd_api_key: str | None = None,
+    ) -> RunEngagementPipeline:
         """Compose the step use cases into one end-to-end pipeline run."""
         return RunEngagementPipeline(
             engagements=self.engagements,
             register=self.register_engagement(),
             collect=self.collect_passive(),
             correlate=self.correlate_intelligence(),
-            discover=self.discover_assets(),
-            analyze=self.analyze_evidence(),
+            discover=self.discover_assets(
+                fingerprint_web=fingerprint_web, waf=waf
+            ),
+            analyze=self.analyze_evidence(
+                cve_lookup=cve_lookup, nvd_api_key=nvd_api_key
+            ),
             assemble=self.assemble_assessment(),
             console=self.console,
         )

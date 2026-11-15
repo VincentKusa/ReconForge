@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +21,7 @@ from reconforge.application.services.discovery import (
 from reconforge.application.workspace import WorkspaceLayout
 from reconforge.domain.errors import ReconForgeError
 from reconforge.domain.exposure_rules import build_assessment
+from reconforge.domain.fingerprint import HostFingerprintReport
 
 
 class DiscoveryGateError(ReconForgeError):
@@ -65,6 +66,9 @@ class DiscoverAssets:
         markdown: MarkdownRenderer,
         pdf: PdfRenderer,
         console: Console,
+        web_port=None,
+        waf_port=None,
+        nmap_xml_port=None,
     ):
         self._workspace = workspace
         self._artifacts = artifacts
@@ -74,6 +78,9 @@ class DiscoverAssets:
         self._markdown = markdown
         self._pdf = pdf
         self._console = console
+        self._web_port = web_port
+        self._waf_port = waf_port
+        self._nmap_xml_port = nmap_xml_port
 
     def execute(self, request: DiscoveryRequest) -> dict[str, Any]:
         """Write ``discover.json`` + Markdown/PDF reports; return the result."""
@@ -181,6 +188,10 @@ class DiscoverAssets:
             }
         )
 
+        fingerprints = self._build_fingerprints(
+            active, engagement["target"], request.active
+        )
+
         result = {
             "engagement_id": request.engagement_id,
             **engagement,
@@ -188,6 +199,7 @@ class DiscoverAssets:
             "inventory": inventory,
             "active": active,
             "assessment": assessment,
+            "fingerprints": fingerprints,
         }
 
         if resolved_target_ips:
@@ -212,3 +224,80 @@ class DiscoverAssets:
         self._console.info(f"Active checks: {len(active)}")
 
         return result
+
+    # -- fingerprint aggregation ---------------------------------------------
+
+    def _urls_for_host(self, item: dict[str, Any], target: str) -> list[str]:
+        """Collect candidate URLs from the HTTP/TLS result and the target itself."""
+        urls: list[str] = []
+
+        http_tls = item.get("http_tls") or {}
+        result = http_tls.get("result") or {}
+
+        # http_recon.collect() stores per-scheme sub-results.
+        for scheme_key in ("http", "https"):
+            sub = result.get(scheme_key)
+            if isinstance(sub, dict):
+                candidate = sub.get("url") or sub.get("final_url")
+                if candidate:
+                    urls.append(candidate)
+
+        # Fall back to a URL-shaped engagement target when nothing was probed.
+        if not urls and target.startswith(("http://", "https://")):
+            urls = [target]
+
+        # Dedupe while preserving order.
+        return list(dict.fromkeys(urls))
+
+    def _build_fingerprints(
+        self,
+        active: dict[str, Any],
+        target: str,
+        is_active: bool,
+    ) -> list[dict[str, Any]]:
+        """Convert per-host active results into HostFingerprintReport dicts."""
+        reports: list[HostFingerprintReport] = []
+
+        for host, item in active.items():
+            report = HostFingerprintReport(asset=host)
+            nmap_result = item.get("nmap") or {}
+
+            if self._nmap_xml_port is not None:
+                for artifact in nmap_result.get("artifacts", []) or []:
+                    xml_path = artifact.get("tcp_xml")
+                    if not xml_path:
+                        continue
+                    try:
+                        services, os_guesses = self._nmap_xml_port.fingerprints(
+                            xml_path
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        self._console.warning(
+                            f"nmap XML parse failed for {xml_path}: {exc}"
+                        )
+                        continue
+                    report.services.extend(services)
+                    report.os_guesses.extend(os_guesses)
+
+            if is_active:
+                for url in self._urls_for_host(item, target):
+                    if self._web_port is not None:
+                        try:
+                            report.web.append(self._web_port.fingerprint(url))
+                        except Exception as exc:  # noqa: BLE001
+                            self._console.warning(
+                                f"web fingerprint failed for {url}: {exc}"
+                            )
+                    if self._waf_port is not None:
+                        try:
+                            waf_signal = self._waf_port.detect(url)
+                            if report.waf is None or waf_signal.detected:
+                                report.waf = waf_signal
+                        except Exception as exc:  # noqa: BLE001
+                            self._console.warning(
+                                f"WAF detection failed for {url}: {exc}"
+                            )
+
+            reports.append(report)
+
+        return [asdict(report) for report in reports]
