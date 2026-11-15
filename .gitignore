@@ -1,0 +1,84 @@
+# Virtual environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Editor directories
+.idea/
+.vscode/
+
+# Backup/leftover files
+*.bak
+
+# Local configuration (never commit credentials or engagement scope)
+config/settings.env
+config/stage4.json
+config/scope.json
+
+# Engagement evidence and generated reports
+output/*
+!output/.gitkeep
+
+# Logs
+logs/*
+!logs/.gitkeep
+
+# Local databases
+*.sqlite3
+*.db
+.env
+build/
+
+# Environment and secrets
+.env.*
+!.env.example
+*.secret
+*.secrets
+secrets/
+credentials/
+**/credentials/
+
+# Private keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa
+id_ed25519
+*.ppk
+
+# Python environments
+venv/
+env/
+.mypy_cache/
+
+# IDE and editor files
+*.swp
+*.swo
+*~
+
+# Operating system
+.DS_Store
+Thumbs.db
+
+# Logs and temporary files
+*.log
+*.tmp
+*.old
+
+# Generated reconnaissance data
+output/
+evidence/
+artifacts/
+reports/generated/
+
+# Local databases
+*.sqlite
+
+# Cloud configuration
+.aws/
+.ssh/

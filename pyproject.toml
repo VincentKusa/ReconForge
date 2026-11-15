@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reconforge"
+version = "0.10.0"
+description = "Modular framework for authorized external reconnaissance, passive OSINT, controlled technical discovery, and reviewer-led security assessment"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "LicenseRef-Proprietary"
+authors = [{ name = "ReconForge maintainers" }]
+keywords = ["reconnaissance", "osint", "security-assessment", "authorized-testing"]
+# Runtime dependency: PDF report generation. Everything else uses the
+# standard library on purpose.
+dependencies = [
+    "reportlab>=4.2,<5",
+]
+
+[project.scripts]
+recon = "reconforge.interfaces.cli.app:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[tool.setuptools]
+packages = { find = { include = ["reconforge*"] } }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    # Lambda assignments to local task callables are intentional and local.
+    "E731",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Report narrative strings and pre-existing test fixtures keep long lines.
+"reconforge/infrastructure/reporting/assessment_report.py" = ["E501"]
+"tests/*" = ["E501"]

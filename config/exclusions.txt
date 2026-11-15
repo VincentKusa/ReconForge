@@ -1,0 +1,2 @@
+# One domain, IP, CIDR, repository or asset identifier per line.
+# Exclusions always override discovered leads.

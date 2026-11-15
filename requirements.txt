@@ -1,0 +1,8 @@
+# ReconForge
+# Core framework and connectors use the Python standard library.
+
+# PDF report generation
+reportlab>=4.2,<5
+
+# Test runner
+pytest>=8.0

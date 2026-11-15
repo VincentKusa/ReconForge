@@ -1,0 +1,16 @@
+{
+  "allow": {
+    "domains": [],
+    "ips": [],
+    "cidrs": [],
+    "assets": [],
+    "repositories": [],
+    "cloud_accounts": []
+  },
+  "exclude": {
+    "domains": [],
+    "ips": [],
+    "cidrs": [],
+    "assets": []
+  }
+}

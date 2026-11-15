@@ -1,0 +1,49 @@
+{
+  "passive": {
+    "enabled": true,
+    "wayback": true,
+    "crtsh": true,
+    "rdap": true,
+    "commoncrawl": true,
+    "dns": true,
+    "whois": true
+  },
+  "nmap": {
+    "enabled": true,
+    "binary": "nmap",
+    "timing_template": 2,
+    "max_retries": 2,
+    "host_timeout": "20m",
+    "process_timeout_seconds": 1500,
+    "udp": {
+      "enabled": false,
+      "all_ports": false,
+      "top_ports": 1000,
+      "process_timeout_seconds": 2400
+    }
+  },
+  "active": {
+    "enabled": true,
+    "require_explicit_asset_approval": true,
+    "approved_assets": [],
+    "max_assets": null,
+    "delay_seconds": 2,
+    "connect_timeout_seconds": 3,
+    "http_timeout_seconds": 10,
+    "tcp_ports": [
+      80,
+      443,
+      8080,
+      8443
+    ],
+    "http_methods": [
+      "HEAD"
+    ],
+    "follow_redirects": false
+  },
+  "limits": {
+    "wayback_records": 500,
+    "commoncrawl_records": 200,
+    "requests_per_minute": 4
+  }
+}
